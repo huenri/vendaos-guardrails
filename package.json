@@ -1,0 +1,59 @@
+{
+  "name": "vendaos-guardrails",
+  "version": "0.1.0",
+  "description": "Fail-closed guardrails for sales agents, with a Brazilian Portuguese starter policy.",
+  "keywords": [
+    "ai-agents",
+    "guardrails",
+    "sales",
+    "compliance",
+    "lgpd",
+    "typescript"
+  ],
+  "homepage": "https://github.com/huenri/vendaos-guardrails#readme",
+  "bugs": {
+    "url": "https://github.com/huenri/vendaos-guardrails/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/huenri/vendaos-guardrails.git"
+  },
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "README.pt-BR.md",
+    "SECURITY.md",
+    "docs"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/clean.mjs dist && tsc -p tsconfig.json",
+    "check": "npm run typecheck && npm test && npm run build && npm run pack:check",
+    "pack:check": "npm pack --dry-run",
+    "test": "node scripts/clean.mjs .test-dist && tsc -p tsconfig.test.json && node --test .test-dist/tests/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
