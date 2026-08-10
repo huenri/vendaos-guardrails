@@ -1,0 +1,6 @@
+name: VendaOS Guardrails CodeQL configuration
+
+paths-ignore:
+  - dist
+  - .test-dist
+  - node_modules

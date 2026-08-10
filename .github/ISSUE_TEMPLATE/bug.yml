@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a reproducible problem without including customer data or secrets.
+title: "[Bug]: "
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: Do not paste real customer content, credentials, access tokens, or direct identifiers.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+      description: Use synthetic data in the reproduction.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      render: typescript
+    validations:
+      required: true
+  - type: dropdown
+    id: security
+    attributes:
+      label: Could this be a security vulnerability?
+      options:
+        - "No"
+        - "Unsure — I will read SECURITY.md before submitting"
+    validations:
+      required: true
