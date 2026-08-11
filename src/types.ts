@@ -95,9 +95,30 @@ export interface ApprovalStatus {
     | "fingerprint_mismatch"
     | "policy_version_mismatch"
     | "not_yet_valid"
-    | "expired";
+    | "expired"
+    | "replayed"
+    | "nonce_store_failed";
   readonly approvedRuleIds: readonly string[];
   readonly approvedBy?: string;
+}
+
+export interface ApprovalNonceConsumption {
+  readonly nonce: string;
+  readonly actionFingerprint: string;
+  readonly policyVersion: string;
+  readonly approvedAt: string;
+  readonly expiresAt: string;
+}
+
+/**
+ * Atomically records a nonce if it has not been consumed before.
+ *
+ * Implementations must return `true` only for the first successful consumption across every
+ * process that can authorize the same side effect. Production implementations should use a
+ * durable unique constraint, compare-and-set, or equivalent transaction-safe primitive.
+ */
+export interface ApprovalNonceConsumer {
+  consume(consumption: ApprovalNonceConsumption): boolean | Promise<boolean>;
 }
 
 export interface RuleContext {
@@ -130,6 +151,7 @@ export interface EngineOptions {
   readonly policyVersion?: string;
   readonly failureMode?: FailureMode;
   readonly approvalSecret?: string | Uint8Array;
+  readonly approvalNonceConsumer?: ApprovalNonceConsumer;
   readonly maxContentLength?: number;
   readonly maxContactHistoryLength?: number;
   readonly clock?: () => Date;

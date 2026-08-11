@@ -6,7 +6,7 @@ VendaOS Guardrails é uma camada determinística e *fail-closed* para agentes co
 
 O projeto é deliberadamente independente de provedor de IA, CRM, canal de mensagens e serviços proprietários do VendaOS. Ele não contém dados de clientes e não possui dependências de produção.
 
-> **Estado: v0.1.0 experimental.** O preset em português brasileiro é um ponto de partida conservador, não um parecer jurídico, certificação de conformidade ou substituto para assessoria qualificada. Não o coloque em produção sem adaptar e revisar.
+> **Estado: v0.2.0 experimental.** O preset em português brasileiro é um ponto de partida conservador, não um parecer jurídico, certificação de conformidade ou substituto para assessoria qualificada. Não o coloque em produção sem adaptar e revisar.
 
 ## Por que este projeto existe
 
@@ -39,7 +39,7 @@ Toda regra pode ser configurada ou substituída. Uma exceção interna vira `blo
 
 ## Executar a partir do código-fonte
 
-O pacote npm ainda não foi publicado. Até a primeira versão:
+O pacote npm ainda não foi publicado. Use a versão marcada no código-fonte:
 
 ```bash
 git clone https://github.com/huenri/vendaos-guardrails.git
@@ -98,13 +98,53 @@ if (avaliacao.decision === "allow") {
 
 Veja [`examples/quickstart.mjs`](examples/quickstart.mjs).
 
+## Entrada não confiável em runtime
+
+Os tipos do TypeScript não validam JSON recebido de agente, webhook, fila ou API. Use
+`parseSalesActionJson`, `parseSalesAction` ou `engine.evaluateUnknown` nessa fronteira. O adaptador
+reconstrói um objeto novo somente com campos permitidos, rejeita campos desconhecidos por padrão,
+recusa getters e objetos não simples, limita a entrada e devolve erros minimizados sem repetir os
+valores rejeitados.
+
+```js
+const avaliacao = await engine.evaluateUnknown(JSON.parse(corpoDaRequisicao));
+if (avaliacao.decision !== "allow") {
+  // Não coloque a ação na fila e não envie.
+}
+```
+
+`SALES_ACTION_JSON_SCHEMA` também é exportado para gateways que já usam JSON Schema. O adaptador da
+biblioteca continua autoritativo porque aplica validações semânticas, como fuso IANA e timestamps
+com offset explícito.
+
 ## Aprovação humana vinculada à ação
 
 Os tokens usam HMAC-SHA-256, expiram rapidamente e ficam vinculados à versão da política, ao fingerprint da ação e às regras selecionadas. O fingerprint cobre referências transformadas por hash, canal, finalidade, horário, conteúdo, termos comerciais, fuso, permissão por finalidade, opt-out e histórico de contato.
 
 O segredo de aprovação precisa permanecer em um serviço de revisão autenticado e conter pelo menos 32 bytes. Nunca o exponha ao agente de IA, navegador, aplicativo móvel, logs ou repositório.
 
-A aplicação também deve registrar os nonces consumidos e impedir replay. A biblioteca valida integridade e validade temporal, mas não finge que memória local oferece uso único durável.
+Para impedir replay, configure um `ApprovalNonceConsumer` cuja operação `consume` seja atômica em
+todos os processos capazes de autorizar um envio. Uma restrição única no banco ou compare-and-set é
+adequada; um conjunto em memória não basta em produção. O motor consome o nonce apenas quando a
+aprovação pode mudar o resultado final. Replay ou indisponibilidade do armazenamento permanece
+como `review`.
+
+```js
+const engine = new GuardrailEngine({
+  policyVersion: "minha-politica-2026-08",
+  rules,
+  approvalSecret,
+  approvalNonceConsumer: {
+    async consume({ nonce, expiresAt }) {
+      return banco.inserirNonceSeAusente({ nonce, expiresAt });
+    },
+  },
+});
+```
+
+`engine.getPolicyManifest()` devolve uma descrição determinística e legível por máquina da ordem
+das regras, limites, modo de falha e postura contra replay, sem incluir funções executáveis ou
+segredos.
 
 ## Auditoria com minimização de dados
 
@@ -116,13 +156,19 @@ Isso fornece evidência de alteração, não armazenamento seguro. Persista os r
 
 - Nenhuma dependência de produção.
 - TypeScript estrito e tamanho máximo de mensagem.
+- Parsing em runtime para entradas JSON não confiáveis com campos desconhecidos rejeitados.
 - Falha fechada por padrão.
 - Aprovação HMAC não pode remover bloqueio.
+- Consumo atômico opcional de nonce falha fechado em replay ou erro de armazenamento.
 - Auditoria sem conteúdo bruto ou identificadores diretos.
 - Actions fixadas por SHA completo.
 - CI em Node.js 22 e 24, CodeQL e revisão de dependências.
 
 A biblioteca não confirma se a aplicação forneceu consentimento verdadeiro, histórico completo, revisor autenticado ou configuração jurídica atual. Detectores por padrão podem errar para ambos os lados. Leia o [modelo de ameaças](docs/THREAT_MODEL.md) antes da integração.
+
+Veja o formato de integração resistente a corridas em
+[`examples/race-safe-outbox.mjs`](examples/race-safe-outbox.mjs) e
+[`docs/OUTBOX_PATTERN.md`](docs/OUTBOX_PATTERN.md).
 
 ## Desenvolvimento
 

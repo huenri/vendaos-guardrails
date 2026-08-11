@@ -4,10 +4,25 @@ export type {
   AuditRuleResult,
   CreateAuditRecordOptions,
 } from "./audit.js";
-export { issueApproval, verifyApproval } from "./approval.js";
+export { issueApproval, verifyAndConsumeApproval, verifyApproval } from "./approval.js";
 export type { IssueApprovalInput } from "./approval.js";
 export { GuardrailEngine } from "./engine.js";
 export { createActionFingerprint, hashIdentifier } from "./fingerprint.js";
+export {
+  assertValidPolicyConfiguration,
+  createPolicyManifest,
+  DEFAULT_FAILURE_MODE,
+  DEFAULT_MAX_CONTACT_HISTORY_LENGTH,
+  DEFAULT_MAX_CONTENT_LENGTH,
+  DEFAULT_POLICY_VERSION,
+  validatePolicyConfiguration,
+} from "./policy.js";
+export type {
+  PolicyManifest,
+  PolicyManifestRule,
+  PolicyValidationIssue,
+  PolicyValidationResult,
+} from "./policy.js";
 export { createBrazilianPortuguesePolicy } from "./presets/brazilian-portuguese.js";
 export type { BrazilianPortuguesePolicyOptions } from "./presets/brazilian-portuguese.js";
 export { createConsentRule } from "./rules/consent.js";
@@ -30,6 +45,17 @@ export type { RestrictedClaimsRuleOptions } from "./rules/restricted-claims.js";
 export { createSensitiveDataRule } from "./rules/sensitive-data.js";
 export type { SensitiveDataRuleOptions } from "./rules/sensitive-data.js";
 export {
+  parseSalesAction,
+  parseSalesActionJson,
+  SALES_ACTION_JSON_SCHEMA,
+} from "./schema.js";
+export type {
+  ParseSalesActionOptions,
+  SalesActionParseIssue,
+  SalesActionParseResult,
+  SchemaIssue,
+} from "./schema.js";
+export {
   CHANNELS,
   CONSENT_STATUSES,
   DECISIONS,
@@ -37,6 +63,8 @@ export {
 } from "./types.js";
 export type {
   ApprovalPayload,
+  ApprovalNonceConsumer,
+  ApprovalNonceConsumption,
   ApprovalStatus,
   Channel,
   CommercialOffer,

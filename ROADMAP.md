@@ -10,7 +10,7 @@ The roadmap is directional. Security and correctness take priority over feature 
 - Privacy-minimized hash-chain audit records.
 - Strict types, synthetic tests, CI, CodeQL, and dependency review.
 
-## 0.2 — integration hardening
+## 0.2 — integration hardening (released)
 
 - Runtime schema adapters for untrusted JSON input.
 - Reference nonce-consumption interface for replay prevention.
