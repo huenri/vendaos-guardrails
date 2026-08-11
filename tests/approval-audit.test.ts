@@ -42,6 +42,31 @@ test("rejects expired approvals", () => {
   assert.equal(status.reason, "expired");
 });
 
+test("rejects approval verification with an invalid current time", () => {
+  const action = makeAction();
+  const fingerprint = createActionFingerprint(action);
+  const approval = issueApproval(
+    {
+      actionFingerprint: fingerprint,
+      policyVersion: "approval-test-v1",
+      ruleIds: ["commercial.discount-authority"],
+      approvedBy: "reviewer-user-7",
+      now: NOW,
+    },
+    SECRET,
+  );
+
+  const status = verifyApproval(
+    approval,
+    fingerprint,
+    "approval-test-v1",
+    new Date(Number.NaN),
+    SECRET,
+  );
+  assert.equal(status.valid, false);
+  assert.equal(status.reason, "malformed");
+});
+
 test("rejects a modified approval signature", () => {
   const action = makeAction({ offer: { discountPercent: 20 } });
   const fingerprint = createActionFingerprint(action);

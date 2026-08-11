@@ -1,6 +1,11 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-import type { ApprovalPayload, ApprovalStatus, SignedApproval } from "./types.js";
+import type {
+  ApprovalNonceConsumer,
+  ApprovalPayload,
+  ApprovalStatus,
+  SignedApproval,
+} from "./types.js";
 
 const MINIMUM_SECRET_BYTES = 32;
 const DEFAULT_TTL_MS = 15 * 60 * 1_000;
@@ -121,6 +126,10 @@ export function verifyApproval(
     return { valid: false, reason: "secret_not_configured", approvedRuleIds: [] };
   }
 
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
+    return { valid: false, reason: "malformed", approvedRuleIds: [] };
+  }
+
   try {
     const { payload, signature } = approval;
     const approvedAt = new Date(payload.approvedAt);
@@ -179,4 +188,43 @@ export function verifyApproval(
   } catch {
     return { valid: false, reason: "malformed", approvedRuleIds: [] };
   }
+}
+
+/**
+ * Verifies an approval and atomically consumes its nonce before returning a valid status.
+ * A consumer error fails closed and is never exposed in the returned status.
+ */
+export async function verifyAndConsumeApproval(
+  approval: SignedApproval | undefined,
+  expectedFingerprint: string,
+  expectedPolicyVersion: string,
+  now: Date,
+  secret: string | Uint8Array | undefined,
+  nonceConsumer: ApprovalNonceConsumer,
+): Promise<ApprovalStatus> {
+  const status = verifyApproval(
+    approval,
+    expectedFingerprint,
+    expectedPolicyVersion,
+    now,
+    secret,
+  );
+  if (!status.valid || !approval) return status;
+
+  try {
+    const consumed = await nonceConsumer.consume({
+      nonce: approval.payload.nonce,
+      actionFingerprint: approval.payload.actionFingerprint,
+      policyVersion: approval.payload.policyVersion,
+      approvedAt: approval.payload.approvedAt,
+      expiresAt: approval.payload.expiresAt,
+    });
+    if (consumed !== true) {
+      return { valid: false, reason: "replayed", approvedRuleIds: [] };
+    }
+  } catch {
+    return { valid: false, reason: "nonce_store_failed", approvedRuleIds: [] };
+  }
+
+  return status;
 }

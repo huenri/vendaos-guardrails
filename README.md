@@ -6,7 +6,7 @@ VendaOS Guardrails is a deterministic, fail-closed policy layer for sales agents
 
 The project is deliberately independent from any model provider, CRM, messaging vendor, or proprietary VendaOS service. It contains no customer data and has no production dependencies.
 
-> **Status: experimental v0.1.0.** The Brazilian Portuguese preset is a conservative starting point, not a legal determination, compliance certification, or replacement for qualified counsel. Do not deploy it unchanged in a regulated or production flow.
+> **Status: experimental v0.2.0.** The Brazilian Portuguese preset is a conservative starting point, not a legal determination, compliance certification, or replacement for qualified counsel. Do not deploy it unchanged in a regulated or production flow.
 
 ## Why this exists
 
@@ -39,7 +39,7 @@ Every rule is configurable or replaceable. A rule exception is converted to `blo
 
 ## Run from source
 
-The npm package has not been published yet. Until the first release:
+The npm package has not been published. Use the tagged source release:
 
 ```bash
 git clone https://github.com/huenri/vendaos-guardrails.git
@@ -98,6 +98,24 @@ if (evaluation.decision === "allow") {
 
 See [`examples/quickstart.mjs`](examples/quickstart.mjs) for a runnable example.
 
+## Untrusted runtime input
+
+TypeScript types do not validate JSON received from an agent, webhook, queue, or API. Use
+`parseSalesActionJson`, `parseSalesAction`, or `engine.evaluateUnknown` at that boundary. The
+adapter rebuilds a fresh allow-listed object, rejects unknown fields by default, refuses accessors
+and non-plain objects, bounds input, and returns minimized issues that do not echo rejected values.
+
+```js
+const evaluation = await engine.evaluateUnknown(JSON.parse(requestBody));
+if (evaluation.decision !== "allow") {
+  // Do not enqueue or send the action.
+}
+```
+
+`SALES_ACTION_JSON_SCHEMA` is exported for gateways that already use a JSON Schema validator. The
+package adapter remains authoritative because it also applies semantic checks such as IANA time
+zones and explicit timestamp offsets.
+
 ## Exact-action human approval
 
 Approval tokens use HMAC-SHA-256, expire quickly, and are bound to the policy version, action fingerprint, and selected rule IDs. The fingerprint covers hashed action and customer references, channel, purpose, schedule, message content, commercial terms, time zone, purpose-scoped permission, opt-out state, and contact history.
@@ -118,7 +136,26 @@ const approval = issueApproval(
 );
 ```
 
-The host must additionally record consumed approval nonces and reject replay. The library verifies integrity and expiry but intentionally does not pretend that an in-memory process can provide durable one-time use.
+For replay prevention, configure an `ApprovalNonceConsumer` whose `consume` operation is atomic
+across every process that can authorize a send. A database unique constraint or compare-and-set is
+appropriate; an in-memory set is not sufficient for production. The engine consumes the nonce only
+when the approval can change the final result, and replay or storage failure remains `review`.
+
+```js
+const engine = new GuardrailEngine({
+  policyVersion: "my-policy-2026-08",
+  rules,
+  approvalSecret,
+  approvalNonceConsumer: {
+    async consume({ nonce, expiresAt }) {
+      return database.insertNonceIfAbsent({ nonce, expiresAt });
+    },
+  },
+});
+```
+
+`engine.getPolicyManifest()` returns a deterministic machine-readable description of rule order,
+limits, failure mode, and replay posture. It never includes executable rule functions or secrets.
 
 ## Privacy-preserving audit records
 
@@ -130,13 +167,19 @@ This is tamper-evidence, not secure storage. Persist records in an access-contro
 
 - No production dependencies.
 - Strict TypeScript and bounded message input.
+- Runtime parsing for untrusted JSON-shaped input with strict unknown-field handling.
 - Fail-closed rule execution by default.
 - HMAC approvals cannot override a block.
+- Optional atomic nonce consumption fails closed on replay or storage errors.
 - Audit output excludes raw message content and direct identifiers.
 - GitHub Actions are pinned to complete commit SHAs.
 - CI tests Node.js 22 and 24; CodeQL and dependency review run separately.
 
 This library cannot verify that the host supplied truthful consent, complete history, a correctly authenticated reviewer, or current legal configuration. Pattern detection can have false positives and false negatives. Read the [threat model](docs/THREAT_MODEL.md) before integrating it.
+
+For a race-safe integration shape, see
+[`examples/race-safe-outbox.mjs`](examples/race-safe-outbox.mjs) and
+[`docs/OUTBOX_PATTERN.md`](docs/OUTBOX_PATTERN.md).
 
 ## Development
 

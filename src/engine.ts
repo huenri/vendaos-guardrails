@@ -1,5 +1,11 @@
-import { verifyApproval } from "./approval.js";
+import { verifyAndConsumeApproval, verifyApproval } from "./approval.js";
 import { createActionFingerprint } from "./fingerprint.js";
+import {
+  assertValidPolicyConfiguration,
+  createPolicyManifest,
+  type PolicyManifest,
+} from "./policy.js";
+import { parseSalesAction } from "./schema.js";
 import type {
   ApprovalStatus,
   Decision,
@@ -29,10 +35,13 @@ export class GuardrailEngine {
       "policyVersion" | "failureMode" | "maxContentLength" | "maxContactHistoryLength" | "clock"
     >
   > &
-    Pick<EngineOptions, "approvalSecret">;
+    Pick<EngineOptions, "approvalNonceConsumer" | "approvalSecret">;
   readonly #rules: EngineOptions["rules"];
+  readonly #manifest: PolicyManifest;
 
   constructor(options: EngineOptions) {
+    assertValidPolicyConfiguration(options);
+
     if (!Array.isArray(options.rules) || options.rules.length === 0) {
       throw new Error("At least one guardrail rule is required.");
     }
@@ -60,6 +69,57 @@ export class GuardrailEngine {
       maxContactHistoryLength,
       clock: options.clock ?? (() => new Date()),
       ...(options.approvalSecret === undefined ? {} : { approvalSecret: options.approvalSecret }),
+      ...(options.approvalNonceConsumer === undefined
+        ? {}
+        : { approvalNonceConsumer: options.approvalNonceConsumer }),
+    };
+    this.#manifest = createPolicyManifest({
+      ...options,
+      policyVersion: this.#options.policyVersion,
+      failureMode: this.#options.failureMode,
+      maxContentLength: this.#options.maxContentLength,
+      maxContactHistoryLength: this.#options.maxContactHistoryLength,
+    });
+  }
+
+  getPolicyManifest(): PolicyManifest {
+    return this.#manifest;
+  }
+
+  /**
+   * Parses untrusted JSON-shaped input into a fresh allow-listed object before evaluation.
+   * Schema failures always return a minimized block and never echo input values.
+   */
+  async evaluateUnknown(input: unknown): Promise<Evaluation> {
+    const parsed = parseSalesAction(input, {
+      maxContentLength: this.#options.maxContentLength,
+      maxContactHistoryLength: this.#options.maxContactHistoryLength,
+    });
+    if (parsed.success) return this.evaluate(parsed.value);
+
+    const evaluatedAt = this.#options.clock();
+    if (!(evaluatedAt instanceof Date) || Number.isNaN(evaluatedAt.getTime())) {
+      throw new Error("Engine clock returned an invalid date.");
+    }
+    const firstIssue = parsed.issues[0];
+    return {
+      version: 1,
+      policyVersion: this.#options.policyVersion,
+      decision: "block",
+      evaluatedAt: evaluatedAt.toISOString(),
+      actionFingerprint: null,
+      results: [{
+        ruleId: "core.input-schema",
+        decision: "block",
+        code: "INPUT_SCHEMA_REJECTED",
+        message: "Untrusted input did not match the SalesAction schema.",
+        details: {
+          issueCode: firstIssue?.code ?? "INVALID_ACTION",
+          issuePath: firstIssue?.path ?? "$",
+          issueCount: parsed.issues.length,
+        },
+      }],
+      approval: NO_APPROVAL,
     };
   }
 
@@ -87,7 +147,7 @@ export class GuardrailEngine {
     }
 
     const actionFingerprint = createActionFingerprint(action);
-    const approval = verifyApproval(
+    let approval = verifyApproval(
       action.approval,
       actionFingerprint,
       this.#options.policyVersion,
@@ -115,24 +175,48 @@ export class GuardrailEngine {
         };
       }
 
-      if (
-        result.decision === "review" &&
-        approval.valid &&
-        approval.approvedRuleIds.includes(rule.id)
-      ) {
-        result = {
-          ...result,
-          decision: "allow",
-          code: "HUMAN_APPROVAL_ACCEPTED",
-          message: "A valid human approval is bound to this exact action and rule.",
-          approvalApplied: true,
-        };
-      }
-
       results.push(result);
     }
 
-    const decision = results.reduce<Decision>(
+    const approvalWouldApply =
+      approval.valid &&
+      !results.some((result) => result.decision === "block") &&
+      results.some(
+        (result) =>
+          result.decision === "review" && approval.approvedRuleIds.includes(result.ruleId),
+      );
+
+    if (approvalWouldApply && this.#options.approvalNonceConsumer) {
+      approval = await verifyAndConsumeApproval(
+        action.approval,
+        actionFingerprint,
+        this.#options.policyVersion,
+        evaluatedAt,
+        this.#options.approvalSecret,
+        this.#options.approvalNonceConsumer,
+      );
+    }
+
+    const finalizedResults = results.map((result): RuleResult => {
+      if (
+        result.decision !== "review" ||
+        !approvalWouldApply ||
+        !approval.valid ||
+        !approval.approvedRuleIds.includes(result.ruleId)
+      ) {
+        return result;
+      }
+
+      return {
+        ...result,
+        decision: "allow",
+        code: "HUMAN_APPROVAL_ACCEPTED",
+        message: "A valid human approval is bound to this exact action and rule.",
+        approvalApplied: true,
+      };
+    });
+
+    const decision = finalizedResults.reduce<Decision>(
       (current, result) =>
         DECISION_WEIGHT[result.decision] > DECISION_WEIGHT[current] ? result.decision : current,
       "allow",
@@ -144,7 +228,7 @@ export class GuardrailEngine {
       decision,
       evaluatedAt: evaluatedAt.toISOString(),
       actionFingerprint,
-      results,
+      results: finalizedResults,
       approval,
     };
   }

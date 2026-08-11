@@ -1,6 +1,6 @@
 {
   "name": "vendaos-guardrails",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Fail-closed guardrails for sales agents, with a Brazilian Portuguese starter policy.",
   "keywords": [
     "ai-agents",
@@ -36,14 +36,16 @@
     "README.md",
     "README.pt-BR.md",
     "SECURITY.md",
-    "docs"
+    "docs",
+    "examples"
   ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "build": "node scripts/clean.mjs dist && tsc -p tsconfig.json",
-    "check": "npm run typecheck && npm test && npm run build && npm run pack:check",
+    "check": "npm run typecheck && npm test && npm run build && npm run examples:check && npm run pack:check",
+    "examples:check": "node examples/quickstart.mjs && node examples/race-safe-outbox.mjs",
     "pack:check": "npm pack --dry-run",
     "test": "node scripts/clean.mjs .test-dist && tsc -p tsconfig.test.json && node --test .test-dist/tests/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
